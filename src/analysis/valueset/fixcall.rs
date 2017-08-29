@@ -13,6 +13,10 @@
 //!    *  https://www.zybuluo.com/SmashStack/note/850129
 //!
 
+
+// TODO: Merge fixcall.rs into src/analysis/interproc/summary.rs.
+// TODO: Too much comments and trace.
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::fmt::Debug;
