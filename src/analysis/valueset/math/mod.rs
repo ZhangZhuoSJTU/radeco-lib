@@ -10,12 +10,17 @@ mod test;
 
 // warning: rust uses '!' as bitwise not operator
 // blcic(!x) = tzmsk(x)+1 = product of the '2's of x's prime decomposition
+
+// 101111-> 10000
 pub fn blcic(x: u64) -> u64 {
     x.wrapping_add(1) & !x
-} // 101111-> 10000
+} 
+
+// 010000->  1111
 pub fn tzmsk(x: u64) -> u64 {
     x.wrapping_sub(1) & !x
-} // 010000->  1111
+} 
+
 pub fn bitsmear(mut smear: u64) -> u64 {
     smear |= smear >> 32;
     smear |= smear >> 16;
@@ -43,13 +48,11 @@ pub fn gcd_lcm(mut m: u64, mut n: u64) -> (u64, u64) {
 
 pub fn multiplicative_inverse(mut a: u64, n: u64) -> Option<u64> {
 
-    // println!("{:?} {:?}", a, n);
-
     if n == 0 {
         return Option::None;
     }
     a %= n;
-    // println!(" ({:?} {:?})", a, n);
+
     if a == 0 {
         return Option::None;
     }
@@ -73,6 +76,30 @@ pub fn multiplicative_inverse(mut a: u64, n: u64) -> Option<u64> {
     if r > 1 {
         return Option::None;
     }
-    // println!("= {:?}", t);
+
     Option::Some(t)
+}
+
+/// Traits for math operation of set.
+pub trait set_theory {
+    /// Return if Set A is a subset of Set B.
+    fn has_subset(&self, _: &Self) -> bool;
+
+    /// Return the intersection(meet) of Set A and Set B.
+    fn meet(&self, _: &Self) -> Self;
+    
+    /// Return the union(join) of Set A and Set B.
+    fn join(&self, _: &Self) -> Self;
+    
+    /// Widen Set A with respect to Set B.
+    fn widen(&mut self, _: &Self);
+    
+    /// Adjust all value in Set A by a constant B.
+    fn adjust(&mut self, _: i64);
+    
+    /// Set lower bound of Set A to negative infinitude.
+    fn remove_lower_boundes(&mut self);
+    
+    /// Set upper bound of Set A to positive infinitude.
+    fn remove_upper_boundes(&mut self);
 }
