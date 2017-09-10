@@ -50,6 +50,7 @@ pub struct SSAConstruct<'a, T>
     // Used to keep track of the offset within an instruction.
     instruction_offset: u64,
     needs_new_block: bool,
+    indirect_jump: bool,
     mem_id: usize,
 }
 
@@ -71,6 +72,7 @@ impl<'a, T> SSAConstruct<'a, T>
             nesting: Vec::new(),
             instruction_offset: 0,
             needs_new_block: true,
+            indirect_jump: false,
             mem_id: 0,
         };
 
@@ -214,8 +216,11 @@ impl<'a, T> SSAConstruct<'a, T>
                             let target_addr = MAddress::new(target, 0);
                             self.phiplacer
                                 .add_block(target_addr, Some(*address), Some(UNCOND_EDGE));
-                            self.needs_new_block = true;
+                        } else {
+                            self.indirect_jump = true;
+                            self.phiplacer.write_register(address, name, rhs.expect("rhs for EEq cannot be `None`"));
                         }
+                        self.needs_new_block = true;
                     } else {
                         // We are writing into a register.
                         self.phiplacer.write_register(address, name, rhs.expect("rhs for EEq cannot be `None`"));
@@ -432,6 +437,9 @@ impl<'a, T> SSAConstruct<'a, T>
                 continue;
             };
 
+            println!("OP: {:?}", op);
+            println!("ESIL: {}", esil_str);
+
             // Reset the instruction offset and remake the current_address.
             // TODO: Improve this mechanism.
             self.instruction_offset = 0;
@@ -442,7 +450,11 @@ impl<'a, T> SSAConstruct<'a, T>
             }
 
             current_address.offset = 0;
-            self.phiplacer.maybe_add_edge(current_address, next_address);
+            if !self.indirect_jump {
+                self.phiplacer.maybe_add_edge(current_address, next_address);
+            } else {
+                self.indirect_jump = false;
+            }
             current_address = next_address;
 
             // If the nesting vector has a non zero length, then we need to make another
@@ -490,8 +502,9 @@ impl<'a, T> SSAConstruct<'a, T>
             }
 
             while let Some(ref token) = p.parse::<_, Tokenizer>(esil_str) {
-                radeco_trace!("ssa_construct_token|{}|{:?}", current_address, token);
+                println!("ssa_construct_token|{}|{:?}", current_address, token);
                 let (lhs, rhs) = p.fetch_operands(token);
+                println!("ssa_construct_token|{}|lhs: {:?}|rhs: {:?}", current_address, lhs, rhs);
                 // Determine what to do with the operands and get the result.
                 let result = self.process_op(token, &mut current_address, &[lhs, rhs]);
                 if let Some(result_) = self.process_out(result, current_address) {

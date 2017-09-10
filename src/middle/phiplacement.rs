@@ -546,7 +546,8 @@ impl<'a, T: SSAMod<BBInfo=MAddress> + SSAExtra +  'a> PhiPlacer<'a, T> {
         
         // Add register information into comment;
         for id in 0..self.regfile.whole_names.len() {
-            let reg_name = self.regfile.get_name(id).unwrap();
+            let mut reg_name = self.regfile.get_name(id).unwrap();
+            reg_name.push_str("@");
             let name = reg_name.as_str();
             if msg.starts_with(name) {
                 self.ssa.set_register(i, &reg_name);
@@ -802,6 +803,7 @@ impl<'a, T: SSAMod<BBInfo=MAddress> + SSAExtra +  'a> PhiPlacer<'a, T> {
         } 
         let exit_node = self.ssa.exit_node();
         for exit in exits {
+            println!("PhiPlacer|Exit Point: {:#}", self.ssa.address(&exit).unwrap());
             self.ssa.add_control_edge(exit, exit_node, UNCOND_EDGE);
         }
     }
@@ -833,5 +835,11 @@ impl<'a, T: SSAMod<BBInfo=MAddress> + SSAExtra +  'a> PhiPlacer<'a, T> {
         }
 
         self.ssa.map_registers(self.regfile.whole_names.clone());
+
+        for node in self.ssa.blocks() {
+            println!("{:?} at {:#}", node, self.ssa.address(&node).unwrap());
+            println!("\tPred: {:?}", self.ssa.preds_of(node));
+            println!("\tSucc: {:?}", self.ssa.succs_of(node));
+        }
     }
 }

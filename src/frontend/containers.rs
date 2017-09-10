@@ -349,6 +349,9 @@ impl<'a, T: 'a + Source> From<&'a mut T> for RadecoModule<'a, DefaultFnTy> {
             }
             radeco_trace!("Locals of {:?}: {:?}", f.name, f.locals);
             let offset = f.offset.expect("Invalid offset");
+            if offset != 11136 {
+                continue;
+            }
             let instructions = source.instructions_at(offset);
             let tx = tx.clone();
             let reg_info = reg_info.clone();

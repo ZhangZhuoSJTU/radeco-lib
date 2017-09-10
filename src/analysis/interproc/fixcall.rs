@@ -58,7 +58,9 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
             }
         }
 
-    // Make a ROUNDED analyze for the RadecoModule. 
+
+
+    /// Make a ROUNDED analyze for the RadecoModule. 
     pub fn rounded_analysis(&mut self) {
         let functions = self.rmod.functions.clone();
         let matched_func_vec: Vec<u64> =
@@ -86,10 +88,14 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
     }
 
 
-    // Second analysis, at this point, we have at least BP for every callee, now, we could
-    // do a global search for all the nodes' stack offset. Then, we could make a more accurate
-    // preserved fix.
+
+    /// Second analysis, at this point, we have at least BP for every callee, now, we could
+    /// do a global search for all the nodes' stack offset. Then, we could make a more accurate
+    /// preserved fix.
     pub fn reanalysis(&mut self, rfn_addr: &u64) {
+        if rfn_addr != &11136 {
+            return;
+        }
         // Sort operands for commutative opcode first.
         {
             let rfn = self.rmod.functions.get_mut(rfn_addr)
@@ -100,6 +106,9 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
             sorter.run();
         }
 
+        // Here, we check the assumption we made in first analysis.
+        // If the SP is not balanced, we will throw a WARN or PANIC.
+        // TODO: if the SP is not balanced, please UNDO the fix.
         let (entry_store, exit_load) = {
             let rfn = self.rmod.functions.get(rfn_addr)
                                 .expect("RadecoFunction Not Found!");
@@ -107,27 +116,35 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
             let sp_name = self.sp_name.clone().unwrap_or(String::new());
             let bp_name = self.bp_name.clone().unwrap_or(String::new());
             let stack_offset = digstack::rounded_analysis(&ssa, sp_name, bp_name);
-            // Here, we check the assumption we made in first analysis.
-            // If the SP is not balanced, we will throw a WARN or PANIC.
-            // TODO: if the SP is not balanced, please UNDO the fix.
-            radeco_trace!("CallFixer|Global stack_offset: {:?}", stack_offset);
-            if let &Some(sp_offset) = self.sp_offsets.get(rfn_addr).unwrap() {
-                let mut max_offset: i64 = 0;
-                // The last SP offset should be the biggest
-                for offset in &stack_offset {
-                    radeco_trace!("CallFixer|{:?} with {:?}: {}", offset.0,
-                             ssa.get_node_data(offset.0), offset.1);
-                    if offset.1 > &max_offset {
-                        max_offset = *offset.1;
+            if let Some(&sp_offset) = self.sp_offsets.get(rfn_addr) {
+                let exit_node = ssa.exit_node();
+                let rs = ssa.registers_at(&exit_node);
+                let operands = ssa.get_operands(&rs);
+                let mut worklist: VecDeque<LValueRef> = VecDeque::new();
+                worklist.extend(operands.iter());
+                let mut flag = false;
+
+                // ATTENTION: It's possible to have mutilple exit points, one of these
+                // exit points may have unbalanced stack, which is not influenced analysis.
+                // For example: sym.imp.__stack_chk_fail
+                while let Some(op) = worklist.pop_front() {
+                    if ssa.is_phi(&op) && ssa.block_of(&op) == ssa.exit_node() {
+                        let operands = ssa.get_operands(&op);
+                        worklist.extend(operands.iter());
+                        continue;
+                    }
+                    let sp_name = &self.sp_name.clone().unwrap_or(String::new());
+                    if ssa.get_register(&op).contains(sp_name) && 
+                        sp_offset.as_ref() == stack_offset.get(&op) {
+                            flag = true;
+                            break;
                     }
                 }
-                if max_offset != sp_offset {
-                    radeco_warn!("Stack is not Balanced in fn_addr {:?}! \
-                                 First analysis {:?} with seconde analysis {:?}",
-                                rfn_addr, sp_offset, max_offset);
-                    println!("  [*] WARN: Stack is not Balanced in function @ {:#}! Output \
-                             analysis may be not accurate",
-                             rfn_addr);
+
+                if !flag {
+                    radeco_warn!("Stack is not Balanced in fn_addr {:?}!", rfn_addr);
+                    println!("  [*] WARN: Stack is not Balanced in function @ {:#}! \
+                                Output analysis may be not accurate", rfn_addr);
                 }
             }
             (
@@ -141,11 +158,17 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
         self.mark_preserved(rfn_addr, entry_store, exit_load);
     }
 
-    // First analysis, only based on the assumption the SP is balanced.
-    // After this, we could at least make sure whether BP is balanced,
-    // and then we could spread all the stack offset in the whole funciton.
+
+
+
+    /// First analysis, only based on the assumption the SP is balanced.
+    /// After this, we could at least make sure whether BP is balanced,
+    /// and then we could spread all the stack offset in the whole funciton.
     pub fn analysis(&mut self, rfn_addr: &u64) {
         radeco_trace!("CallFixer|Analyze {:#}", rfn_addr);
+        if rfn_addr != &11136 {
+            return;
+        }
 
         // Sort operands for commutative opcode first.
         {
@@ -165,29 +188,35 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
                                 .expect("RadecoFunction Not Found!");
             let ssa = rfn.ssa_ref();
 
-                // analysis entry block
+            // analysis entry block
             let entry_store = { 
                 let sp_name = self.sp_name.clone().unwrap_or(String::new());
                 let bp_name = self.bp_name.clone().unwrap_or(String::new());
                 let entry_offset = digstack::frontward_analysis(&ssa, sp_name, bp_name);
+                radeco_trace!("Entry_offset: {:?}", entry_offset);
                 self.analysis_entry_store(ssa, entry_offset)
             };
 
-                // analysis exit blocks
+            // analysis exit blocks
             let exit_load = {
                 let sp_name = self.sp_name.clone().unwrap_or(String::new());
                 let exit_offset = digstack::backward_analysis(&ssa, sp_name);
+                println!("Exit_offset: {:?}", exit_offset);
                 self.analysis_exit_load(ssa, exit_offset)
             };
             (entry_store, exit_load)
         };
+        println!("CallFixer|Entry_store: {:?}", entry_store);
+        println!("callfixer|Exit_load: {:?}", exit_load);
 
         let sp_offset = self.mark_preserved(rfn_addr, entry_store, exit_load);
         self.sp_offsets.insert(*rfn_addr, sp_offset);
     }
 
-    // Fix the call_site with the callees' preserved register,
-    // which will make later analysis much easier.
+
+
+    /// Fix the call_site with the callees' preserved register,
+    /// which will make later analysis much easier.
     pub fn fix(&mut self, rfn_addr: &u64) {
         let call_info: Vec<(LValueRef, Vec<String>)> = {
             let rfn = self.rmod.functions.get(rfn_addr)
@@ -231,6 +260,8 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
     }
 
 
+
+
     /// Below is helper function.
 
     // Before we calcluate, we have to finger out the SP offset between entry node 
@@ -268,7 +299,7 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
             (preserves, sp_offset)
         };
 
-        radeco_trace!("CallFixer|{:?} with {:?}", preserves, sp_offset);
+        println!("CallFixer|{:?} with {:?}", preserves, sp_offset);
 
         // Store data into RadecoFunction
         {
@@ -349,6 +380,7 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
     }
 
 
+
     // Analyze entry blocks' store for preserved registers
     fn analysis_entry_store(&self, ssa: &SSAStorage, 
             entry_offset: HashMap<LValueRef, i64>)
@@ -364,9 +396,8 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
             if ssa.get_register(node).is_empty() {
                 continue;
             }
-            let reg_names = ssa.get_register(node);
-            let users = ssa.get_uses(node);
-            for reg_name in reg_names {
+            if let Some(reg_name) = ssa.get_comment(node) {
+                let users = ssa.get_uses(node);
                 for user in &users {
                     if Some(MOpcode::OpStore) == ssa.get_opcode(user) {
                         let args = ssa.get_operands(user);
@@ -382,6 +413,8 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
         radeco_trace!("CallFixer|Entry_store is {:?}", entry_store);
         entry_store
     } 
+
+
 
     // Get callee's node and its preserved registers
     fn preserves_for_call_context(&self, 
@@ -421,6 +454,8 @@ impl<'a, 'b: 'a, B> CallFixer<'a, 'b, B>
         result
     }
     
+
+
 
     // Function used to see graph start from node id.
     // If we have a fast graph generation, this could be removed.

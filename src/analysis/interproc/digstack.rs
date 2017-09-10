@@ -37,6 +37,23 @@ pub fn backward_analysis(ssa:&SSAStorage, sp_name: String)
     }
     
     while let Some(node) = worklist.pop_front() {
+        println!("{:?} with {:?}", node, ssa.get_node_data(&node));
+        println!("Offset: {:?}", stack_offset.get(&node));
+        println!("Register: {:?}", ssa.get_register(&node));
+        println!("Arguments: {:?}", ssa.get_operands(&node));
+        if ssa.get_const(node).is_none() {
+            let block = ssa.get_block(&node);
+            println!("Block at {:#}", ssa.address(&block).unwrap());
+        }
+        for op in &ssa.get_operands(&node) {
+            println!("\t{:?} with {:?}", op, ssa.get_node_data(op));
+            println!("\t\tRegister: {:?}", ssa.get_register(op));
+            println!("\t\tArguments: {:?}", ssa.get_operands(op));
+            if ssa.get_const(*op).is_none() {
+                let block = ssa.get_block(op);
+                println!("\t\tBlock at {:#}", ssa.address(&block).unwrap());
+            }
+        }
         if !visited.contains(&node) {
             visited.insert(node);
         } else {
