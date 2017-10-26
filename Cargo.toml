@@ -35,4 +35,4 @@ git = "https://github.com/radare/r2pipe.rs"
 git = "https://github.com/radare/radare2-r2pipe-api"
 
 [dependencies.esil]
-git = "https://github.com/radare/esil-rs"
+git = "https://github.com/ZhangZhuoSJTU/esil-rs"
