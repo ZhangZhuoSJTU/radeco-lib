@@ -15,7 +15,7 @@ use std::u64;
 
 use r2api::structs::{LOpInfo};
 use middle::ssa::ssa_traits::{SSAMod, SSAExtra, ValueInfo};
-use middle::ssa::graph_traits::{Graph, EdgeInfo, ConditionInfo};
+use middle::ssa::graph_traits::{Graph, EdgeInfo};
 use middle::ir::{self, MAddress, MOpcode};
 
 use middle::ssa::ssa_traits::{NodeType, NodeData};
@@ -262,32 +262,48 @@ impl<'a, T> PhiPlacer<'a, T>
 
 
             // Copy all the outgoing CF edges.
-            let invalid_edge = self.ssa.invalid_edge()
-                                        .expect("Invalid Edge is not defined");
-            let conditional_branches = 
-                if let Some(branches) = self.ssa.conditional_edges(upper_block) {
-                    branches
-                } else {
-                    ConditionInfo::new(invalid_edge, invalid_edge)
-                };
-            let outgoing = [conditional_branches.false_side,
-                            conditional_branches.true_side,
-                            self.ssa.unconditional_edge(upper_block).unwrap_or(invalid_edge)
-                            ];
-            for (i, edge) in outgoing.iter().enumerate() {
-                if *edge != self.ssa.invalid_edge()
-                                        .expect("Invalid Edge is not defined") {
-                    let target = self.ssa.edge_info(*edge).unwrap_or_else(|| {
-                        radeco_err!("Less-endpoints edge");
-                        EdgeInfo::new(self.ssa.invalid_action().unwrap(),
-                            self.ssa.invalid_action().unwrap())
-                    }).target;
-                    if lower_block != target {
-                        radeco_trace!("ADD BLOCK: phip_add_edge|{:?} --{}--> {:?}", 
-                                      lower_block, i, target);
-                        self.ssa.insert_control_edge(lower_block, target, i as u8);
-                        self.ssa.remove_control_edge(*edge);
-                    }
+            //
+            // BUG: When construct SSA, their is possible that a basic only have one
+            // conditional_edges
+            //
+            // let invalid_edge = self.ssa.invalid_edge()
+            //                             .expect("Invalid Edge is not defined");
+            // let conditional_branches = 
+            //     if let Some(branches) = self.ssa.conditional_edges(upper_block) {
+            //         branches
+            //     } else {
+            //         ConditionInfo::new(invalid_edge, invalid_edge)
+            //     };
+            // let outgoing = [conditional_branches.false_side,
+            //                 conditional_branches.true_side,
+            //                 self.ssa.unconditional_edge(upper_block).unwrap_or(invalid_edge)
+            //                 ];
+            // for (i, edge) in outgoing.iter().enumerate() {
+            //     if *edge != self.ssa.invalid_edge()
+            //                             .expect("Invalid Edge is not defined") {
+            //         let target = self.ssa.edge_info(*edge).unwrap_or_else(|| {
+            //             radeco_err!("Less-endpoints edge");
+            //             EdgeInfo::new(self.ssa.invalid_action().unwrap(),
+            //                 self.ssa.invalid_action().unwrap())
+            //         }).target;
+            //         if lower_block != target {
+            //             radeco_trace!("ADD BLOCK: phip_add_edge|{:?} --{}--> {:?}", 
+            //                           lower_block, i, target);
+            //             self.ssa.insert_control_edge(lower_block, target, i as u8);
+            //             self.ssa.remove_control_edge(*edge);
+            //         }
+            //     }
+            
+			for (edge, i) in self.ssa.outgoing_edges(upper_block).iter() {
+                let target = self.ssa.edge_info(*edge).unwrap_or_else(|| {
+                    radeco_err!("Less-endpoints edge");
+                    EdgeInfo::new(self.ssa.invalid_action().unwrap(),
+                        self.ssa.invalid_action().unwrap())
+                }).target;
+
+                if target != lower_block {
+                    self.ssa.insert_control_edge(lower_block, target, *i as u8);
+                    self.ssa.remove_control_edge(*edge);
                 }
             }
 
